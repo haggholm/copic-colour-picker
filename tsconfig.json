@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "Node",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "lib": ["ES2020", "DOM"],
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.json"]
+}

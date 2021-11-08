@@ -10,3 +10,5 @@ Type an RGB value into the input field, e.g.
 
 The code is awful. This is a quick and dirty tool just to, well, pick out
 marker colours, not set up a long-term software project.
+
+Usable via https://raw.githack.com/haggholm/copic-colour-picker/main/index.html

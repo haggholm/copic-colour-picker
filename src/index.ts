@@ -1,6 +1,6 @@
-import convert from "color-convert";
+import colourConvert from "color-convert";
 import data from "./data_copic.json";
-import { LCH } from "color-convert/conversions";
+import { RGB } from "color-convert/conversions";
 
 interface CopicEntry {
   id: string;
@@ -15,66 +15,62 @@ function isInteger(v: string | number): boolean {
     return true;
   }
   const res = Number(v);
-  return !isNaN(res) && `${res}` !== v && Math.round(res) === res;
+  return !isNaN(res) && `${res}` === v && Math.round(res) === res;
 }
 
 enum Model {
-  RGB = "RGB",
-  HSV = "HSV",
+  CMYK = "CMYK",
   HSL = "HSL",
+  HSV = "HSV",
   HWB = "HWB",
-  LCH = "LCH",
   LAB = "LAB",
+  LCH = "LCH",
+  RGB = "RGB",
+  XYZ = "XYZ",
 }
+const models = Object.values(Model).sort();
 const defaultModel = Model.LAB;
 
-function distance(
-  x: [number, number, number] | [string, string, string],
-  y: [number, number, number] | [string, string, string]
-): number {
-  const a = x.map((v: any) => Number(v));
-  const b = y.map((v: any) => Number(v));
-  return Math.sqrt(
-    (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
-  );
+type ColourValue3 = [number, number, number];
+type ColourValue4 = [number, number, number, number];
+
+const convert: Record<Model, (rgb: RGB) => ColourValue3 | ColourValue4> = {
+  [Model.CMYK]: colourConvert.rgb.cmyk,
+  [Model.HSL]: colourConvert.rgb.hsl,
+  [Model.HSV]: colourConvert.rgb.hsv,
+  [Model.HWB]: colourConvert.rgb.hwb,
+  [Model.LAB]: colourConvert.rgb.lab,
+  [Model.LCH]: colourConvert.rgb.lch,
+  [Model.RGB]: (rgb) => rgb,
+  [Model.XYZ]: colourConvert.rgb.xyz,
+};
+
+function distance(x: number[] | string[], y: number[] | string[]): number {
+  let n = 0;
+  for (let i = 0; i < x.length; i++) {
+    n += (Number(x[i]) - Number(y[i])) ** 2;
+  }
+  return Math.sqrt(n);
 }
 
-const fontSize = "10pt";
+const fontSize = "9pt";
 
 async function main() {
   // const res = ((window as any).copicData as any) as CopicEntry[];
   const res = data as CopicEntry[];
   const body = document.querySelector("body") as HTMLBodyElement;
 
-  const input = document.createElement("input");
+  const input = body.appendChild(document.createElement("input"));
   input.setAttribute("type", "text");
   input.setAttribute("value", "100,200,100");
-  body.appendChild(input);
 
-  const span = document.createElement("span");
-  body.appendChild(span);
+  const span = body.appendChild(document.createElement("span"));
 
-  const table = document.createElement("table") as HTMLTableElement;
-  table.setAttribute("id", "copic-colour-table");
-  body.appendChild(table);
+  const table = body.appendChild(document.createElement("table"));
+  const thead = table.appendChild(document.createElement("thead"));
+  const tbody = table.appendChild(document.createElement("thead"));
 
-  const thead = document.createElement("thead");
-  table.appendChild(thead);
-
-  const tbody = document.createElement("thead");
-  table.appendChild(tbody);
-
-  function hideAll() {
-    for (const tr of Array.from(tbody.children)) {
-      tr.setAttribute("style", "display: none");
-    }
-  }
-
-  function showAll() {
-    for (const tr of Array.from(tbody.children)) {
-      tr.setAttribute("style", "");
-    }
-  }
+  let lastModeVal: string | null = null;
 
   function updateSimilarity() {
     let val = input.value.trim();
@@ -87,17 +83,13 @@ async function main() {
     }
 
     if (!val || val.split(",").length !== 3) {
-      showAll();
       return;
     }
     for (const v of val.split(",")) {
       if (!isInteger(v)) {
-        showAll();
+        return;
       }
     }
-
-    // hideAll();
-    showAll();
 
     const rgb = (val.split(",") as string[]).map((v) => Number(v)) as [
       number,
@@ -105,75 +97,46 @@ async function main() {
       number
     ];
 
-    const mode = (document.querySelector(
+    const model = (document.querySelector(
       'input[name="mode"]:checked'
     ) as HTMLInputElement).value as Model;
 
-    const [r, g, b] = rgb;
-    const values: Record<Model, [number, number, number]> = {
-      [Model.RGB]: rgb,
-      [Model.HSV]: convert.rgb.hsv(r, g, b),
-      [Model.HSL]: convert.rgb.hsl(r, g, b),
-      [Model.HWB]: convert.rgb.hwb(r, g, b),
-      [Model.LCH]: convert.rgb.lch(r, g, b),
-      [Model.LAB]: convert.rgb.lab(r, g, b),
-    };
-    const modelValue = values[mode];
+    const curModeVal = `${model}|${rgb.join(",")}`;
+    if (lastModeVal === curModeVal) {
+      return;
+    }
+    lastModeVal = curModeVal;
 
-    input.setAttribute("style", `background-color:RGB(${r},${g},${b})`);
+    const modelValue = convert[model](rgb);
 
-    // const fn = (v: number) => Math.max(v, Math.abs(v - 255));
-    // const maxDiff = Math.sqrt(fn(r) ** 2 + fn(g) ** 2 + fn(b) ** 2);
-    const mv = (v: number) => {
-      const abs = Math.abs(v);
-      const max = Math.max(v, Math.abs(255 - v));
-      return max;
-    };
-    // const maxDiff = distance([0, 0, 0], [255, 255, 255]);
+    input.setAttribute("style", `background-color:RGB(${rgb.join(",")})`);
+
+    const mv = (v: number) => Math.max(Math.abs(v), Math.abs(255 - v));
     const maxDiff = distance(
       [0, 0, 0],
       [mv(modelValue[0]), mv(modelValue[1]), mv(modelValue[2])]
     );
+    // const maxDiff = distance([0, 0, 0], [255, 255, 255]);
 
     const differences: { tr: HTMLTableRowElement; diff: number }[] = [];
 
     for (const tr of Array.from(tbody.children) as HTMLTableRowElement[]) {
-      const diffs: Record<Model, number> = {
-        [Model.RGB]:
-          distance(rgb, JSON.parse(tr.getAttribute("data-rgb")!)) / maxDiff,
-        [Model.HSV]:
-          distance(values.HSV, JSON.parse(tr.getAttribute("data-hsv")!)) /
-          maxDiff,
-        [Model.HSL]:
-          distance(values.HSL, JSON.parse(tr.getAttribute("data-hsl")!)) /
-          maxDiff,
-        [Model.HWB]:
-          distance(values.HWB, JSON.parse(tr.getAttribute("data-hwb")!)) /
-          maxDiff,
-        [Model.LCH]:
-          distance(values.LCH, JSON.parse(tr.getAttribute("data-lch")!)) /
-          maxDiff,
-        [Model.LAB]:
-          distance(values.LAB, JSON.parse(tr.getAttribute("data-lab")!)) /
-          maxDiff,
-        // mean: 0,
-      };
-      // diffs.mean = (diffs.rgb + diffs.hsv) / 2;
-      console.log({ diffs });
-
-      const diff: number = diffs[mode];
+      const diff: number = distance(
+        modelValue,
+        JSON.parse(tr.getAttribute(`data-${model}`)!)
+      );
 
       const diffTD = tr.lastElementChild!;
       const prevTD = diffTD.previousElementSibling! as HTMLTableCellElement;
-      diffTD.innerHTML = `${((1 - diff) * 100).toFixed(1)}%`;
+      diffTD.innerHTML = `${((1 - diff / maxDiff) * 100).toFixed(1)}%`;
       diffTD.setAttribute("style", "text-align:center;");
 
-      prevTD.innerText = values[mode]
+      prevTD.innerText = modelValue
         .map((v) => `${v}`.padStart(3, "0"))
         .join(", ");
       prevTD.setAttribute(
         "style",
-        `font-size:${fontSize};background-color:RGB(${r},${g},${b})`
+        `font-size:${fontSize};background-color:RGB(${rgb.join(",")})`
       );
 
       differences.push({ tr, diff });
@@ -199,9 +162,10 @@ async function main() {
   input.onchange = input.onblur = input.onkeyup = input.onkeypress = input.onload = updateSimilarity;
   setTimeout(updateSimilarity, 1);
 
-  for (const model of Object.values(Model)) {
-    const radio = document.createElement("input") as HTMLInputElement;
-    span.appendChild(radio);
+  for (const model of models) {
+    const radio = span.appendChild<HTMLInputElement>(
+      document.createElement("input")
+    );
     radio.setAttribute("name", "mode");
     radio.setAttribute("value", model);
     radio.setAttribute("type", "radio");
@@ -216,62 +180,40 @@ async function main() {
     radio.onclick = radio.onchange = updateSimilarity;
   }
 
-  for (const txt of [
-    "Copic ID",
-    "Name",
-    "RGB",
-    "HSV",
-    "HSL",
-    "HWB",
-    "LCH",
-    "LAB",
-    "",
-    "Similarity",
-  ]) {
-    const th = document.createElement("th");
-    thead.appendChild(th);
+  for (const txt of ["Copic ID", "Name", ...models, "", "Similarity"]) {
+    const th = thead.appendChild<HTMLTableHeaderCellElement>(
+      document.createElement("th")
+    );
     th.innerText = txt;
   }
 
-  for (const e of res) {
-    const tr = document.createElement("tr") as HTMLTableRowElement;
-    const style = `font-size:${fontSize};background-color:RGB(${e.rgb})`;
+  for (const e of res.filter((e) => e.rgbv?.length)) {
+    const tr = tbody.appendChild<HTMLTableRowElement>(
+      document.createElement("tr")
+    );
 
-    let td = document.createElement("td") as HTMLTableCellElement;
-    // td.setAttribute("style", style);
-    tr.appendChild(td);
+    let td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
     td.innerHTML = e.id;
 
-    td = document.createElement("td");
-    // td.setAttribute("style", style);
-    tr.appendChild(td);
+    td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
     td.innerText = e.name;
 
-    if (e.rgbv?.length) {
-      const [r, g, b] = e.rgbv.map((v) => Number(v));
-      for (const model of ["rgb", "hsv", "hsl", "hwb", "lch", "lab"] as const) {
-        const val = model === "rgb" ? e.rgbv : convert.rgb[model](r, g, b);
-        td = document.createElement("td");
-        td.setAttribute("style", style);
-        tr.appendChild(td);
-        td.innerHTML = val
-          .map((v: string | number) => `${v}`.padStart(3, "0"))
-          .join(", ");
-        tr.setAttribute(`data-${model}`, JSON.stringify(val));
-      }
-    } else {
-      continue;
+    const rgbv = e.rgbv.map((v) => Number(v)) as [number, number, number];
+    for (const model of models) {
+      const val = convert[model](rgbv);
+      td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
+      td.setAttribute(
+        "style",
+        `font-size:${fontSize};background-color:RGB(${e.rgb});padding:3px;`
+      );
+      td.innerHTML = val
+        .map((v: string | number) => `${v}`.padStart(3, "0"))
+        .join(",");
+      tr.setAttribute(`data-${model}`, JSON.stringify(val));
     }
 
-    td = document.createElement("td");
-    // td.setAttribute("style", style);
-    tr.appendChild(td);
-
-    td = document.createElement("td");
-    // td.setAttribute("style", style);
-    tr.appendChild(td);
-
-    tbody.appendChild(tr);
+    td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
+    td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
   }
 }
 

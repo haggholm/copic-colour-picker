@@ -113,8 +113,8 @@ async function main() {
 
     const mv = (v: number) => Math.max(Math.abs(v), Math.abs(255 - v));
     const maxDiff = distance(
-      [0, 0, 0],
-      [mv(modelValue[0]), mv(modelValue[1]), mv(modelValue[2])]
+      modelValue.map((v) => 0),
+      modelValue.map(mv)
     );
     // const maxDiff = distance([0, 0, 0], [255, 255, 255]);
 

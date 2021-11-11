@@ -259,7 +259,7 @@ async function init() {
   const body = document.querySelector('body') as HTMLBodyElement;
 
   const defaultProduct = cookie.get(Cookie.DefaultProduct) ?? DataSet.Copic;
-  const defaultModel = cookie.get(Cookie.DefaultProduct) ?? Model.LAB;
+  const defaultModel = cookie.get(Cookie.DefaultModel) ?? Model.LAB;
 
   const optsTable = body.appendChild(document.createElement('table'));
 
@@ -284,12 +284,8 @@ async function init() {
     radio.onclick = label.onclick = () => {
       cookie.set(Cookie.DefaultProduct, product);
       updateTable();
-      updateSimilarity();
     };
-    radio.onchange = () => {
-      updateTable();
-      updateSimilarity();
-    };
+    radio.onchange = updateTable;
   }
 
   const modelRow = optsTable.appendChild(document.createElement('tr'));

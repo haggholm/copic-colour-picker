@@ -258,8 +258,9 @@ function updateSimilarity() {
 async function init() {
   const body = document.querySelector('body') as HTMLBodyElement;
 
-  const defaultProduct = cookie.get(Cookie.DefaultProduct) ?? DataSet.Copic;
-  const defaultModel = cookie.get(Cookie.DefaultModel) ?? Model.LAB;
+  const defaultProduct: DataSet =
+    cookie.get(Cookie.DefaultProduct) ?? DataSet.Copic;
+  const defaultModel: Model = cookie.get(Cookie.DefaultModel) ?? Model.LAB;
 
   const optsTable = body.appendChild(document.createElement('table'));
 
@@ -300,7 +301,6 @@ async function init() {
     radio.setAttribute('value', model);
     radio.setAttribute('type', 'radio');
     radio.setAttribute('id', `mode-${model}`);
-    radio.onclick = () => cookie.set(Cookie.DefaultModel, model);
     radio.checked = model === defaultModel;
 
     const label = document.createElement('label');

@@ -1,17 +1,37 @@
-import colourConvert from "color-convert";
-import data from "./data_copic.json";
-import { RGB } from "color-convert/conversions";
+import { assert } from 'ts-essentials';
+import colourConvert from 'color-convert';
+import { RGB } from 'color-convert/conversions';
+import * as cookie from 'tiny-cookie';
 
-interface CopicEntry {
-  id: string;
-  name: string;
-  hex: string;
-  rgbv: [string, string, string];
-  rgb: string;
+import copicData from './data_copic.json';
+import pcData from './data_prismacolor.json';
+
+enum DataSet {
+  Copic = 'Copic',
+  Prismacolor = 'Prismacolor',
 }
 
+enum Cookie {
+  DefaultModel = 'default-colour-space',
+  DefaultProduct = 'default-product',
+}
+
+type DataEntry = { id: string; name: string } & (
+  | { hex?: never; rgbv?: never; rgb?: never }
+  | {
+      hex: string;
+      rgbv: [string, string, string];
+      rgb: string;
+    }
+);
+
+const dataSets: Record<DataSet, DataEntry[]> = {
+  [DataSet.Copic]: copicData as DataEntry[],
+  [DataSet.Prismacolor]: pcData as DataEntry[],
+};
+
 function isInteger(v: string | number): boolean {
-  if (typeof v === "number") {
+  if (typeof v === 'number') {
     return true;
   }
   const res = Number(v);
@@ -19,17 +39,16 @@ function isInteger(v: string | number): boolean {
 }
 
 enum Model {
-  CMYK = "CMYK",
-  HSL = "HSL",
-  HSV = "HSV",
-  HWB = "HWB",
-  LAB = "LAB",
-  LCH = "LCH",
-  RGB = "RGB",
-  XYZ = "XYZ",
+  CMYK = 'CMYK',
+  HSL = 'HSL',
+  HSV = 'HSV',
+  HWB = 'HWB',
+  LAB = 'LAB',
+  LCH = 'LCH',
+  RGB = 'RGB',
+  XYZ = 'XYZ',
 }
 const models = Object.values(Model).sort();
-const defaultModel = Model.LAB;
 
 type ColourValue3 = [number, number, number];
 type ColourValue4 = [number, number, number, number];
@@ -53,168 +72,264 @@ function distance(x: number[] | string[], y: number[] | string[]): number {
   return Math.sqrt(n);
 }
 
-const fontSize = "9pt";
+const fontSize = '9pt';
 
-async function main() {
-  // const res = ((window as any).copicData as any) as CopicEntry[];
-  const res = data as CopicEntry[];
-  const body = document.querySelector("body") as HTMLBodyElement;
+const ids = {
+  table: 'colour-picker-table',
+  searchValue: 'colour-value-input',
+};
 
-  const input = body.appendChild(document.createElement("input"));
-  input.setAttribute("type", "text");
-  input.setAttribute("value", "100,200,100");
+function getCurrentData(): DataEntry[] {
+  const dataSetName = (document.querySelector(
+    'input[name="product"]:checked'
+  ) as HTMLInputElement).value as DataSet;
+  console.log('Get data set:', dataSetName);
 
-  const span = body.appendChild(document.createElement("span"));
+  return dataSets[dataSetName];
+}
 
-  const table = body.appendChild(document.createElement("table"));
-  const thead = table.appendChild(document.createElement("thead"));
-  const tbody = table.appendChild(document.createElement("thead"));
+function updateTable() {
+  let table: HTMLTableElement | null = document.getElementById(
+    ids.table
+  ) as HTMLTableElement | null;
+  let tbody: HTMLElement | null;
 
-  let lastModeVal: string | null = null;
+  if (table) {
+    tbody = table.querySelector('tbody')!;
+  } else {
+    const body = document.querySelector('body') as HTMLBodyElement;
+    table = body.appendChild(
+      document.createElement('table')
+    ) as HTMLTableElement;
+    table.setAttribute('id', ids.table);
 
-  function updateSimilarity() {
-    let val = input.value.trim();
-    if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
-      val = [
-        parseInt(val.substr(1, 2), 16).toString(10),
-        parseInt(val.substr(3, 2), 16).toString(10),
-        parseInt(val.substr(5, 2), 16).toString(10),
-      ].join(",");
-    }
+    const thead = table.appendChild(document.createElement('thead'));
+    tbody = table.appendChild(document.createElement('tbody'));
 
-    if (!val || val.split(",").length !== 3) {
-      return;
-    }
-    for (const v of val.split(",")) {
-      if (!isInteger(v)) {
-        return;
-      }
-    }
-
-    const rgb = (val.split(",") as string[]).map((v) => Number(v)) as [
-      number,
-      number,
-      number
-    ];
-
-    const model = (document.querySelector(
-      'input[name="mode"]:checked'
-    ) as HTMLInputElement).value as Model;
-
-    const curModeVal = `${model}|${rgb.join(",")}`;
-    if (lastModeVal === curModeVal) {
-      return;
-    }
-    lastModeVal = curModeVal;
-
-    const modelValue = convert[model](rgb);
-
-    input.setAttribute("style", `background-color:RGB(${rgb.join(",")})`);
-
-    const mv = (v: number) => Math.max(Math.abs(v), Math.abs(255 - v));
-    const maxDiff = distance(
-      modelValue.map((v) => 0),
-      modelValue.map(mv)
-    );
-    // const maxDiff = distance([0, 0, 0], [255, 255, 255]);
-
-    const differences: { tr: HTMLTableRowElement; diff: number }[] = [];
-
-    for (const tr of Array.from(tbody.children) as HTMLTableRowElement[]) {
-      const diff: number = distance(
-        modelValue,
-        JSON.parse(tr.getAttribute(`data-${model}`)!)
+    for (const txt of ['Code', 'Name', ...models, '', 'Similarity']) {
+      const th = thead.appendChild<HTMLTableHeaderCellElement>(
+        document.createElement('th')
       );
-
-      const diffTD = tr.lastElementChild!;
-      const prevTD = diffTD.previousElementSibling! as HTMLTableCellElement;
-      diffTD.innerHTML = `${((1 - diff / maxDiff) * 100).toFixed(1)}%`;
-      diffTD.setAttribute("style", "text-align:center;");
-
-      prevTD.innerText = modelValue
-        .map((v) => `${v}`.padStart(3, "0"))
-        .join(", ");
-      prevTD.setAttribute(
-        "style",
-        `font-size:${fontSize};background-color:RGB(${rgb.join(",")})`
-      );
-
-      differences.push({ tr, diff });
-    }
-
-    differences.sort((x, y) => {
-      if (x.diff < y.diff) {
-        return -1;
-      } else if (x.diff > y.diff) {
-        return +1;
-      } else {
-        return 0;
-      }
-    });
-
-    for (const tr of Array.from(tbody.children) as HTMLTableRowElement[]) {
-      tr.remove();
-    }
-    for (const e of differences) {
-      tbody.appendChild(e.tr);
+      th.innerText = txt;
     }
   }
-  input.onchange = input.onblur = input.onkeyup = input.onkeypress = input.onload = updateSimilarity;
-  setTimeout(updateSimilarity, 1);
 
-  for (const model of models) {
-    const radio = span.appendChild<HTMLInputElement>(
-      document.createElement("input")
-    );
-    radio.setAttribute("name", "mode");
-    radio.setAttribute("value", model);
-    radio.setAttribute("type", "radio");
-    radio.setAttribute("id", `mode-${model}`);
-    radio.checked = model === defaultModel;
+  assert(table);
+  assert(tbody);
 
-    const label = document.createElement("label");
-    span.appendChild(label);
-    label.innerText = model;
-    label.setAttribute("for", `mode-${model}`);
+  Array.from(tbody.children ?? []).forEach((el) => el.remove());
+  lastState = null;
 
-    radio.onclick = radio.onchange = updateSimilarity;
-  }
-
-  for (const txt of ["Copic ID", "Name", ...models, "", "Similarity"]) {
-    const th = thead.appendChild<HTMLTableHeaderCellElement>(
-      document.createElement("th")
-    );
-    th.innerText = txt;
-  }
-
-  for (const e of res.filter((e) => e.rgbv?.length)) {
+  const data = getCurrentData();
+  for (const e of data.filter((e) => e.rgbv?.length)) {
     const tr = tbody.appendChild<HTMLTableRowElement>(
-      document.createElement("tr")
+      document.createElement('tr')
     );
 
-    let td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
+    let td = tr.appendChild<HTMLTableCellElement>(document.createElement('td'));
     td.innerHTML = e.id;
 
-    td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
+    td = tr.appendChild<HTMLTableCellElement>(document.createElement('td'));
     td.innerText = e.name;
 
-    const rgbv = e.rgbv.map((v) => Number(v)) as [number, number, number];
+    const rgbv = e.rgbv!.map((v) => Number(v)) as [number, number, number];
     for (const model of models) {
       const val = convert[model](rgbv);
-      td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
+      td = tr.appendChild<HTMLTableCellElement>(document.createElement('td'));
       td.setAttribute(
-        "style",
+        'style',
         `font-size:${fontSize};background-color:RGB(${e.rgb});padding:3px;`
       );
       td.innerHTML = val
-        .map((v: string | number) => `${v}`.padStart(3, "0"))
-        .join(",");
+        .map((v: string | number) => `${v}`.padStart(3, '0'))
+        .join(',');
       tr.setAttribute(`data-${model}`, JSON.stringify(val));
     }
 
-    td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
-    td = tr.appendChild<HTMLTableCellElement>(document.createElement("td"));
+    td = tr.appendChild<HTMLTableCellElement>(document.createElement('td'));
+    td = tr.appendChild<HTMLTableCellElement>(document.createElement('td'));
+  }
+
+  updateSimilarity();
+}
+
+let lastState: string | null;
+
+function updateSimilarity() {
+  const table = document.getElementById(ids.table) as HTMLTableElement;
+  const tbody = table.querySelector('tbody');
+  const colourInput = document.getElementById(
+    ids.searchValue
+  ) as HTMLInputElement;
+  assert(tbody);
+  assert(colourInput);
+
+  let val = colourInput.value.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+    val = [
+      parseInt(val.substr(1, 2), 16).toString(10),
+      parseInt(val.substr(3, 2), 16).toString(10),
+      parseInt(val.substr(5, 2), 16).toString(10),
+    ].join(',');
+  }
+
+  if (!val || val.split(',').length !== 3) {
+    return;
+  }
+  for (const v of val.split(',')) {
+    if (!isInteger(v)) {
+      return;
+    }
+  }
+
+  const rgb = (val.split(',') as string[]).map((v) => Number(v)) as [
+    number,
+    number,
+    number
+  ];
+
+  const dataSetName = (document.querySelector(
+    'input[name="product"]:checked'
+  ) as HTMLInputElement).value as Model;
+  const model = (document.querySelector(
+    'input[name="mode"]:checked'
+  ) as HTMLInputElement).value as Model;
+
+  const curState = `${dataSetName}|${model}|${rgb.join(',')}`;
+  if (lastState === curState) {
+    return;
+  }
+  lastState = curState;
+
+  const modelValue = convert[model](rgb);
+  console.log(`Find ${dataSetName} for colour RGB(${rgb.join(',')})`);
+
+  colourInput.setAttribute('style', `background-color:RGB(${rgb.join(',')})`);
+
+  const mv = (v: number) => Math.max(Math.abs(v), Math.abs(255 - v));
+  const maxDiff = distance(
+    modelValue.map((v) => 0),
+    modelValue.map(mv)
+  );
+  // const maxDiff = distance([0, 0, 0], [255, 255, 255]);
+
+  const differences: { tr: HTMLTableRowElement; diff: number }[] = [];
+
+  for (const tr of Array.from(tbody.children) as HTMLTableRowElement[]) {
+    const diff: number = distance(
+      modelValue,
+      JSON.parse(tr.getAttribute(`data-${model}`)!)
+    );
+
+    const diffTD = tr.lastElementChild!;
+    const prevTD = diffTD.previousElementSibling! as HTMLTableCellElement;
+    diffTD.innerHTML = `${((1 - diff / maxDiff) * 100).toFixed(1)}%`;
+    diffTD.setAttribute('style', 'text-align:center;');
+
+    prevTD.innerText = modelValue
+      .map((v) => `${v}`.padStart(3, '0'))
+      .join(', ');
+    prevTD.setAttribute(
+      'style',
+      `font-size:${fontSize};background-color:RGB(${rgb.join(',')})`
+    );
+
+    differences.push({ tr, diff });
+  }
+
+  differences.sort((x, y) => {
+    if (x.diff < y.diff) {
+      return -1;
+    } else if (x.diff > y.diff) {
+      return +1;
+    } else {
+      return 0;
+    }
+  });
+
+  for (const tr of Array.from(tbody.children) as HTMLTableRowElement[]) {
+    tr.remove();
+  }
+  for (const e of differences) {
+    tbody.appendChild(e.tr);
   }
 }
 
-window.addEventListener("DOMContentLoaded", (/*e*/) => main());
+async function init() {
+  const body = document.querySelector('body') as HTMLBodyElement;
+
+  const defaultProduct = cookie.get(Cookie.DefaultProduct) ?? DataSet.Copic;
+  const defaultModel = cookie.get(Cookie.DefaultProduct) ?? Model.LAB;
+
+  const optsTable = body.appendChild(document.createElement('table'));
+
+  const productRow = optsTable.appendChild(document.createElement('tr'));
+  const productTitleTD = productRow.appendChild(document.createElement('td'));
+  productTitleTD.innerText = 'Product';
+  const productDataTD = productRow.appendChild(document.createElement('td'));
+  for (const product of Object.values(DataSet)) {
+    const radio = productDataTD.appendChild<HTMLInputElement>(
+      document.createElement('input')
+    );
+    radio.setAttribute('name', 'product');
+    radio.setAttribute('value', product);
+    radio.setAttribute('type', 'radio');
+    radio.setAttribute('id', `product-${product}`);
+    radio.checked = product === defaultProduct;
+
+    const label = productDataTD.appendChild(document.createElement('label'));
+    label.innerText = product;
+    label.setAttribute('for', `product-${product}`);
+
+    radio.onclick = label.onclick = () => {
+      cookie.set(Cookie.DefaultProduct, product);
+      updateTable();
+      updateSimilarity();
+    };
+    radio.onchange = () => {
+      updateTable();
+      updateSimilarity();
+    };
+  }
+
+  const modelRow = optsTable.appendChild(document.createElement('tr'));
+  const modelTitleTD = modelRow.appendChild(document.createElement('td'));
+  modelTitleTD.innerText = 'Colour space';
+  const modelDataTD = modelRow.appendChild(document.createElement('td'));
+  for (const model of models) {
+    const radio = modelDataTD.appendChild<HTMLInputElement>(
+      document.createElement('input')
+    );
+    radio.setAttribute('name', 'mode');
+    radio.setAttribute('value', model);
+    radio.setAttribute('type', 'radio');
+    radio.setAttribute('id', `mode-${model}`);
+    radio.onclick = () => cookie.set(Cookie.DefaultModel, model);
+    radio.checked = model === defaultModel;
+
+    const label = document.createElement('label');
+    modelDataTD.appendChild(label);
+    label.innerText = model;
+    label.setAttribute('for', `mode-${model}`);
+
+    radio.onclick = label.onclick = () => {
+      cookie.set(Cookie.DefaultModel, model);
+      updateSimilarity();
+    };
+    radio.onchange = updateSimilarity;
+  }
+
+  const searchRow = optsTable.appendChild(document.createElement('tr'));
+  const searchTitleTD = searchRow.appendChild(document.createElement('td'));
+  searchTitleTD.innerText = 'Find colour';
+  const searchDataTD = searchRow.appendChild(document.createElement('td'));
+  const input = searchDataTD.appendChild(document.createElement('input'));
+  input.setAttribute('id', ids.searchValue);
+  input.setAttribute('type', 'text');
+  input.setAttribute('value', '100,200,100');
+  input.onchange = input.onblur = input.onkeyup = input.onkeypress = input.onload = updateSimilarity;
+
+  updateTable();
+}
+
+window.addEventListener('DOMContentLoaded', (/*e*/) => init());

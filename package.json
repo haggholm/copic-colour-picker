@@ -10,7 +10,10 @@
     "build:prod": "webpack --mode=production --node-env=production",
     "serve": "webpack serve"
   },
-  "dependencies": {},
+  "dependencies": {
+    "tiny-cookie": "^2.3.2",
+    "ts-essentials": "^9.0.0"
+  },
   "devDependencies": {
     "@types/color-convert": "^2.0.0",
     "@webpack-cli/generators": "^2.4.1",

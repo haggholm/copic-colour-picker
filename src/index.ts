@@ -48,6 +48,7 @@ enum Model {
   RGB = 'RGB',
   XYZ = 'XYZ',
 }
+
 const models = Object.values(Model).sort();
 
 type ColourValue3 = [number, number, number];

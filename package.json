@@ -16,7 +16,6 @@
   },
   "devDependencies": {
     "@types/color-convert": "^2.0.0",
-    "@webpack-cli/generators": "^2.4.2",
     "color-convert": "^2.0.1",
     "prettier": "^2.6.1",
     "ts-loader": "^9.2.8",
